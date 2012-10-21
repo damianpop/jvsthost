@@ -3,3 +3,8 @@ bin
 .settings
 .classpath
 src/com/synthbot/audioplugin/vst/vst2/vst2.x
+src/com/synthbot/audioplugin/vst/vst2/Debug
+jvsthost2.sdf
+jvsthost2.opensdf
+jvsthost2.suo
+jvsthost2.vcxproj.user

@@ -27,7 +27,7 @@
 #include <stdlib.h>
 
 #if _WIN32
-  #include <windows.h>
+  #include <windows.h> 
 #elif TARGET_API_MAC_CARBON
   #include <CoreFoundation/CoreFoundation.h>
   #include <Carbon/Carbon.h>
@@ -305,6 +305,27 @@ JNIEXPORT void JNICALL JNI_OnUnload(JavaVM *jvm, void *reserved) {
   env->DeleteWeakGlobalRef(midiMessageClass);
 }
 
+#include <iostream>
+#include <sstream>
+#include <string>
+
+#define DEBUG(A) {std::stringstream ssm; ssm << A; debugMessage(ssm.str());}
+
+void debugMessage(std::string msg){
+  JNIEnv *env;
+  jvm->GetEnv((void **)&env, JNI_VERSION);
+
+  jstring message = env->NewStringUTF(msg.c_str());
+  // calls System.out.println(message);
+  env->CallObjectMethod(
+      env->GetStaticObjectField(
+          env->FindClass("java/lang/System"), 
+          env->GetStaticFieldID(env->FindClass("java/lang/System"), "out", "Ljava/io/PrintStream;")), 
+      env->GetMethodID(env->FindClass("java/io/PrintStream"), "println", "(Ljava/lang/String;)V"), 
+      message);
+}
+
+
 void opcode2string(VstInt32 opcode, VstIntPtr value, JNIEnv *env) {
   jstring message;
 
@@ -567,7 +588,6 @@ VstIntPtr VSTCALLBACK HostCallback (AEffect *effect, VstInt32 opcode, VstInt32 i
           vti->samplesToNextClock = 0;
           vti->flags |= kVstClockValid;
         }
-        
         return (VstIntPtr) vti;
       } else {
         return 0;

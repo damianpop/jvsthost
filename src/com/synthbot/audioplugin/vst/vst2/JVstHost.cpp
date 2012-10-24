@@ -40,6 +40,8 @@
 #define PPQ 96.0
 #define WINDOWS_EDITOR_CLASSNAME "JVstHost Native Editor"
 
+#define DEBUG_ENABLED 0
+
 // GLOBAL VARIABLES
 JavaVM *jvm;
 jclass vpwClass;
@@ -309,7 +311,11 @@ JNIEXPORT void JNICALL JNI_OnUnload(JavaVM *jvm, void *reserved) {
 #include <sstream>
 #include <string>
 
+#if DEBUG_ENABLED
 #define DEBUG(A) {std::stringstream ssm; ssm << A; debugMessage(ssm.str());}
+#else
+#define DEBUG(A)
+#endif
 
 void debugMessage(std::string msg){
   JNIEnv *env;
@@ -325,179 +331,19 @@ void debugMessage(std::string msg){
       message);
 }
 
-
-void opcode2string(VstInt32 opcode, VstIntPtr value, JNIEnv *env) {
-  jstring message;
-
-  switch(opcode) {
-    case audioMasterAutomate: {
-      message = env->NewStringUTF("audioMasterAutomate");
-      break;
-    }
-    case audioMasterVersion: {
-      message = env->NewStringUTF("audioMasterVersion");
-      break;
-    }
-    case audioMasterCurrentId: {
-      message = env->NewStringUTF("audioMasterCurrentId");
-      break;
-    }
-    case audioMasterIdle: {
-      message = env->NewStringUTF("audioMasterIdle");
-      break;
-    }
-    case audioMasterGetTime: {      
-      char *str = (char *) malloc(sizeof(char) * 100);
-      sprintf(str, "audioMasterGetTime: 0x%X", value);
-      message = env->NewStringUTF(str);
-      free(str);
-      break;
-    }
-    case audioMasterProcessEvents: {
-      message = env->NewStringUTF("audioMasterProcessEvents");
-      break;
-    }
-    case audioMasterIOChanged: {
-      message = env->NewStringUTF("audioMasterIOChanged");
-      break;
-    }
-    case audioMasterSizeWindow: {
-      message = env->NewStringUTF("audioMasterSizeWindow");
-      break;
-    }
-    case audioMasterGetSampleRate: {
-      message = env->NewStringUTF("audioMasterGetSampleRate");
-      break;
-    }
-    case audioMasterGetBlockSize: {
-      message = env->NewStringUTF("audioMasterGetBlockSize");
-      break;
-    }
-    case audioMasterGetInputLatency: {
-      message = env->NewStringUTF("audioMasterGetInputLatency");
-      break;
-    }
-    case audioMasterGetOutputLatency: {
-      message = env->NewStringUTF("audioMasterGetOutputLatency");
-      break;
-    }
-    case audioMasterGetCurrentProcessLevel: {
-      message = env->NewStringUTF("audioMasterGetCurrentProcessLevel");
-      break;
-    }
-    case audioMasterGetAutomationState: {
-      message = env->NewStringUTF("audioMasterGetAutomationState");
-      break;
-    }
-    case audioMasterOfflineStart: {
-      message = env->NewStringUTF("audioMasterOfflineStart");
-      break;
-    }
-    case audioMasterOfflineRead: {
-      message = env->NewStringUTF("audioMasterOfflineRead");
-      break;
-    }
-    case audioMasterOfflineWrite: {
-      message = env->NewStringUTF("audioMasterOfflineWrite");
-      break;
-    }
-    case audioMasterOfflineGetCurrentPass: {
-      message = env->NewStringUTF("audioMasterOfflineGetCurrentPass");
-      break;
-    }
-    case audioMasterOfflineGetCurrentMetaPass: {
-      message = env->NewStringUTF("audioMasterOfflineGetCurrentMetaPass");
-      break;
-    }
-    case audioMasterGetVendorString: {
-      message = env->NewStringUTF("audioMasterGetVendorString");
-      break;
-    }
-    case audioMasterGetProductString: {
-      message = env->NewStringUTF("audioMasterGetProductString");
-      break;
-    }
-    case audioMasterGetVendorVersion: {
-      message = env->NewStringUTF("audioMasterGetVendorVersion");
-      break;
-    }
-    case audioMasterVendorSpecific: {
-      message = env->NewStringUTF("audioMasterVendorSpecific");
-      break;
-    }
-    case audioMasterCanDo: {
-      message = env->NewStringUTF("audioMasterCanDo");
-      break;
-    }
-    case audioMasterGetLanguage: {
-      message = env->NewStringUTF("audioMasterGetLanguage");
-      break;
-    }
-    case audioMasterGetDirectory: {
-      message = env->NewStringUTF("audioMasterGetDirectory");
-      break;
-    }
-    case audioMasterUpdateDisplay: {
-      message = env->NewStringUTF("audioMasterUpdateDisplay");
-      break;
-    }
-    case audioMasterBeginEdit: {
-      message = env->NewStringUTF("audioMasterBeginEdit");
-      break;
-    }
-    case audioMasterEndEdit: {
-      message = env->NewStringUTF("audioMasterEndEdit");
-      break;
-    }
-    case audioMasterOpenFileSelector: {
-      message = env->NewStringUTF("audioMasterOpenFileSelector");
-      break;
-    }
-    case audioMasterCloseFileSelector: {
-      message = env->NewStringUTF("audioMasterCloseFileSelector");
-      break;
-    }
-    case audioMasterWantMidi: {
-      message = env->NewStringUTF("audioMasterWantMidi: DEPRECATED in VST 2.4");
-      break;
-    }
-    case audioMasterNeedIdle: {
-      message = env->NewStringUTF("audioMasterNeedIdle: DEPRECATED in VST 2.4");
-      break;
-    }
-    default: {
-      char *str = (char *) malloc(sizeof(char) * 100);
-      sprintf(str, "Opcode not recognized: %i", opcode);
-      message = env->NewStringUTF(str);
-      free(str);
-      break;
-    }
-  }
-
-  // calls System.out.println(message);
-  env->CallObjectMethod(
-      env->GetStaticObjectField(
-          env->FindClass("java/lang/System"), 
-          env->GetStaticFieldID(env->FindClass("java/lang/System"), "out", "Ljava/io/PrintStream;")), 
-      env->GetMethodID(env->FindClass("java/io/PrintStream"), "println", "(Ljava/lang/String;)V"), 
-      message);
-
-}
-
 // opcodes listed in aeffect.h and aeffectx.h
 VstIntPtr VSTCALLBACK HostCallback (AEffect *effect, VstInt32 opcode, VstInt32 index, VstIntPtr value, void *ptr, float opt) {
 
   JNIEnv *env;
   jvm->GetEnv((void **)&env, JNI_VERSION);
 
-  //opcode2string(opcode, value, env);
-  
   switch(opcode) {
   
     // called when a parameter value has changed
     // such as by the plugin's own editor
     // called when the plugin calls setParameterAutomated
     case audioMasterAutomate: {
+	  DEBUG("audioMasterAutomate");
       jobject jobj = getCachedCallingObject(effect);
       if (jobj == NULL) {
         return 0;
@@ -513,14 +359,17 @@ VstIntPtr VSTCALLBACK HostCallback (AEffect *effect, VstInt32 opcode, VstInt32 i
     
     // Host VST version
     case audioMasterVersion: {
+	  DEBUG("audioMasterVersion");
       return kVstVersion; // can handle (supposedly ;-) VST2.4
     }
     
     case audioMasterCurrentId: {
+	  DEBUG("audioMasterCurrentId");
       return 0;
     }
     
     case audioMasterIdle: {
+	  DEBUG("audioMasterIdle");
       return 0;
     }
     
@@ -543,6 +392,7 @@ VstIntPtr VSTCALLBACK HostCallback (AEffect *effect, VstInt32 opcode, VstInt32 i
     */
     // check aeffecx.h!
     case audioMasterGetTime: {
+	  DEBUG("audioMasterGetTime");
       if (isHostLocalVarsValid(effect)) {
         hostLocalVars *hostVars = ((hostLocalVars *) effect->resvd1);
         VstTimeInfo *vti = hostVars->vti;
@@ -605,6 +455,7 @@ VstIntPtr VSTCALLBACK HostCallback (AEffect *effect, VstInt32 opcode, VstInt32 i
      * NOTE: less information is being passed up than is available in the VstMidiEvent structure.
      */
     case audioMasterProcessEvents: {
+	  DEBUG("audioMasterProcessEvents");
       jobject jobj = getCachedCallingObject(effect);
       if (jobj == NULL) {
         return 0;
@@ -639,6 +490,7 @@ VstIntPtr VSTCALLBACK HostCallback (AEffect *effect, VstInt32 opcode, VstInt32 i
     }
     
     case audioMasterIOChanged: {
+	  DEBUG("audioMasterIOChanged");
       jobject jobj = getCachedCallingObject(effect);
       if (jobj == NULL) {
         return 0;
@@ -663,6 +515,7 @@ VstIntPtr VSTCALLBACK HostCallback (AEffect *effect, VstInt32 opcode, VstInt32 i
     
     // [index]: new width [value]: new height [return value]: 1 if supported
     case audioMasterSizeWindow: {
+	  DEBUG("audioMasterSizeWindow");
       #if _WIN32
         if (isHostLocalVarsValid(effect)) {
           HWND hwnd = (HWND) ((hostLocalVars *) effect->resvd1)->nativeEditorWindow;
@@ -677,6 +530,7 @@ VstIntPtr VSTCALLBACK HostCallback (AEffect *effect, VstInt32 opcode, VstInt32 i
     
     // [return value]: current sample rate
     case audioMasterGetSampleRate: {
+	  DEBUG("audioMasterGetSampleRate");
       if (isHostLocalVarsValid(effect)) {
         return (VstIntPtr) ((hostLocalVars *) effect->resvd1)->sampleRate;    
       } else {
@@ -686,6 +540,7 @@ VstIntPtr VSTCALLBACK HostCallback (AEffect *effect, VstInt32 opcode, VstInt32 i
     
     // Returns block size from Host
     case audioMasterGetBlockSize: {
+	  DEBUG("audioMasterGetBlockSize");
       if (isHostLocalVarsValid(effect)) {
         return (VstIntPtr) ((hostLocalVars *) effect->resvd1)->blockSize;    
       } else {
@@ -695,17 +550,20 @@ VstIntPtr VSTCALLBACK HostCallback (AEffect *effect, VstInt32 opcode, VstInt32 i
     
     // [return value]: input latency in audio samples
     case audioMasterGetInputLatency: {
+      DEBUG("audioMasterGetInputLatency");
       return 0;
     }
     
     // [return value]: output latency in audio samples
     case audioMasterGetOutputLatency: {
+      DEBUG("audioMasterGetOutputLatency");
       return 0;
     }
     
     // [return value]: current process level
     // return VstProcessLevels which are enumed in aeffectx.h
     case audioMasterGetCurrentProcessLevel: {
+	  DEBUG("audioMasterGetCurrentProcessLevel");
       /*
       kVstProcessLevelUnknown = 0,	///< not supported by Host
 	    kVstProcessLevelUser,			///< 1: currently in user thread (GUI)
@@ -718,25 +576,30 @@ VstIntPtr VSTCALLBACK HostCallback (AEffect *effect, VstInt32 opcode, VstInt32 i
     
     // [return value]: current automation state
     case audioMasterGetAutomationState: {
+      DEBUG("audioMasterGetAutomationState");
       return kVstAutomationUnsupported;
     }
     
     case audioMasterGetVendorString: {
+	  DEBUG("audioMasterGetVendorString");
       strcpy((char *)ptr, "Synthbot.com");
       // in general should prolly call the java code for this string
       return 1;
     }
     
     case audioMasterGetProductString: {
+	  DEBUG("audioMasterGetProductString");
       strcpy((char *)ptr, "JVstHost2");
       return 1;
     }
     
     case audioMasterGetVendorVersion: {
+	  DEBUG("audioMasterGetVendorVersion");
       return 10; // 1.0
     }
     
     case audioMasterCanDo: {
+	  DEBUG("audioMasterCanDo");
       char *canDo = (char *)ptr;
 
       using namespace HostCanDos;
@@ -758,18 +621,22 @@ VstIntPtr VSTCALLBACK HostCallback (AEffect *effect, VstInt32 opcode, VstInt32 i
     }
     
     case audioMasterGetLanguage: {
+	  DEBUG("audioMasterGetLanguage");
       return kVstLangEnglish; // language of this host is english
     }
     
     case audioMasterOpenFileSelector: {
+	  DEBUG("audioMasterOpenFileSelector");
       return 0; // not supported
     }
     
     case audioMasterCloseFileSelector: {
+	  DEBUG("audioMasterCloseFileSelector");
       return 0;
     }
     
     case audioMasterGetDirectory: {
+	  DEBUG("audioMasterGetDirectory");
       /*
       jobject jobj = getJobj(env);
       if (jobj == NULL) {
@@ -790,10 +657,12 @@ VstIntPtr VSTCALLBACK HostCallback (AEffect *effect, VstInt32 opcode, VstInt32 i
     }
     
     case audioMasterUpdateDisplay: {
+	  DEBUG("audioMasterUpdateDisplay");
       return 0;
     }
     
     case audioMasterBeginEdit: {
+	  DEBUG("audioMasterBeginEdit");
       jobject jobj = getCachedCallingObject(effect);
       if (jobj == NULL) {
         return 0;
@@ -807,6 +676,7 @@ VstIntPtr VSTCALLBACK HostCallback (AEffect *effect, VstInt32 opcode, VstInt32 i
     }
     
     case audioMasterEndEdit: {
+	  DEBUG("audioMasterEndEdit");
       jobject jobj = getCachedCallingObject(effect);
       if (jobj == NULL) {
         return 0;
@@ -818,8 +688,19 @@ VstIntPtr VSTCALLBACK HostCallback (AEffect *effect, VstInt32 opcode, VstInt32 i
         return 1;
       }
     }
+
+	case audioMasterNeedIdle: {
+      DEBUG("DEPRECATED: audioMasterNeedIdle");
+	  return 0;
+    }
+
+	case audioMasterWantMidi: {
+	  DEBUG("DEPRECATED: audioMasterWantMidi");
+	  return 0;			  
+    }
     
     default: {
+	  DEBUG("opcode not recognized: " << opcode);
       return 0;
     }
   }
@@ -1057,7 +938,7 @@ JNIEXPORT void JNICALL Java_com_synthbot_audioplugin_vst_vst2_JVstHost20_openEdi
     HWND hwnd = CreateWindow(
         WINDOWS_EDITOR_CLASSNAME, 
         frameTitle, 
-        WS_SYSMENU, //WS_POPUP | WS_CAPTION | WS_BORDER | WS_SYSMENU | WS_VISIBLE | WS_DLGFRAME | DS_CENTER, //WS_OVERLAPPEDWINDOW | WS_POPUP, 
+        WS_SYSMENU, // | WS_POPUP | WS_CAPTION | WS_BORDER | WS_SYSMENU | WS_VISIBLE | WS_DLGFRAME | DS_CENTER | WS_OVERLAPPEDWINDOW | WS_POPUP, 
         CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
         NULL, 
         NULL, 
@@ -1073,7 +954,7 @@ JNIEXPORT void JNICALL Java_com_synthbot_audioplugin_vst_vst2_JVstHost20_openEdi
     ((hostLocalVars *) effect->resvd1)->nativeEditorWindow = hwnd;
     
     MSG msg;
-    while(GetMessage(&msg, NULL, 0, 0) != NULL) {
+    while(GetMessage(&msg, NULL, 0, 0) > 0) {
       TranslateMessage(&msg);
       DispatchMessage(&msg);
     }

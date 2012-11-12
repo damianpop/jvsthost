@@ -40,7 +40,7 @@
 #define PPQ 96.0
 #define WINDOWS_EDITOR_CLASSNAME "JVstHost Native Editor"
 
-#define DEBUG_ENABLED 0
+#define DEBUG_ENABLED 1
 
 // GLOBAL VARIABLES
 JavaVM *jvm;
@@ -198,7 +198,9 @@ INT_PTR CALLBACK EditorProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         //JNIEnv *env;
         //jvm->GetEnv((void **)&env, JNI_VERSION);
         //env->MonitorEnter(getCachedCallingObject(effect));
+		effect->dispatcher (effect, effIdle, 0, 0, 0, 0);
         effect->dispatcher (effect, effEditIdle, 0, 0, 0, 0);
+
         //env->MonitorExit(getCachedCallingObject(effect));
         return TRUE;
       } else {
@@ -328,6 +330,25 @@ void debugMessage(std::string msg){
           env->GetStaticFieldID(env->FindClass("java/lang/System"), "out", "Ljava/io/PrintStream;")), 
       env->GetMethodID(env->FindClass("java/io/PrintStream"), "println", "(Ljava/lang/String;)V"), 
       message);
+}
+
+int HostCanDo(char *canDo){
+      using namespace HostCanDos;
+      if(strcmp(canDo, canDoSendVstEvents) == 0)                       return 1;
+      else if(strcmp(canDo, canDoSendVstMidiEvent) == 0)               return 1; ///< Host supports send of MIDI events to plug-in
+      else if(strcmp(canDo, canDoSendVstTimeInfo) == 0)                return 1; ///< Host supports send of VstTimeInfo to plug-in
+      else if(strcmp(canDo, canDoReceiveVstEvents) == 0)               return 1;
+      else if(strcmp(canDo, canDoReceiveVstMidiEvent) == 0)            return 1;
+      else if(strcmp(canDo, canDoReportConnectionChanges) == 0)        return 0;
+      else if(strcmp(canDo, canDoAcceptIOChanges) == 0)                return 1;
+      else if(strcmp(canDo, canDoSizeWindow) == 0)                     return 1;
+      else if(strcmp(canDo, canDoOffline) == 0)                        return 0;
+      else if(strcmp(canDo, canDoOpenFileSelector) == 0)               return 0;
+      else if(strcmp(canDo, canDoCloseFileSelector) == 0)              return 0;
+      else if(strcmp(canDo, canDoStartStopProcess) == 0)               return 1;
+      else if(strcmp(canDo, canDoShellCategory) == 0)                  return 0;
+      else if(strcmp(canDo, canDoSendVstMidiEventFlagIsRealtime) == 0) return 0;
+      else return 0;
 }
 
 // opcodes listed in aeffect.h and aeffectx.h
@@ -597,26 +618,12 @@ VstIntPtr VSTCALLBACK HostCallback (AEffect *effect, VstInt32 opcode, VstInt32 i
       return 10; // 1.0
     }
     
-    case audioMasterCanDo: {
-	  DEBUG("audioMasterCanDo");
+    case audioMasterCanDo: {	  
       char *canDo = (char *)ptr;
+	  int can = HostCanDo(canDo);
 
-      using namespace HostCanDos;
-      if(strcmp(canDo, canDoSendVstEvents) == 0)                       return 1;
-      else if(strcmp(canDo, canDoSendVstMidiEvent) == 0)               return 1; ///< Host supports send of MIDI events to plug-in
-      else if(strcmp(canDo, canDoSendVstTimeInfo) == 0)                return 1; ///< Host supports send of VstTimeInfo to plug-in
-      else if(strcmp(canDo, canDoReceiveVstEvents) == 0)               return 1;
-      else if(strcmp(canDo, canDoReceiveVstMidiEvent) == 0)            return 1;
-      else if(strcmp(canDo, canDoReportConnectionChanges) == 0)        return 0;
-      else if(strcmp(canDo, canDoAcceptIOChanges) == 0)                return 1;
-      else if(strcmp(canDo, canDoSizeWindow) == 0)                     return 0;
-      else if(strcmp(canDo, canDoOffline) == 0)                        return 0;
-      else if(strcmp(canDo, canDoOpenFileSelector) == 0)               return 0;
-      else if(strcmp(canDo, canDoCloseFileSelector) == 0)              return 0;
-      else if(strcmp(canDo, canDoStartStopProcess) == 0)               return 1;
-      else if(strcmp(canDo, canDoShellCategory) == 0)                  return 0;
-      else if(strcmp(canDo, canDoSendVstMidiEventFlagIsRealtime) == 0) return 0;
-      else return 0;
+	  DEBUG("audioMasterCanDo " << canDo << " ?? " << (can == 1 ? "YES" : "NO"));
+	  return can;
     }
     
     case audioMasterGetLanguage: {
@@ -657,7 +664,7 @@ VstIntPtr VSTCALLBACK HostCallback (AEffect *effect, VstInt32 opcode, VstInt32 i
     
     case audioMasterUpdateDisplay: {
 	  DEBUG("audioMasterUpdateDisplay");
-      return 0;
+      return 1;
     }
     
     case audioMasterBeginEdit: {
@@ -937,7 +944,7 @@ JNIEXPORT void JNICALL Java_com_synthbot_audioplugin_vst_vst2_JVstHost20_openEdi
     HWND hwnd = CreateWindow(
         WINDOWS_EDITOR_CLASSNAME, 
         frameTitle, 
-        WS_SYSMENU, // | WS_POPUP | WS_CAPTION | WS_BORDER | WS_SYSMENU | WS_VISIBLE | WS_DLGFRAME | DS_CENTER | WS_OVERLAPPEDWINDOW | WS_POPUP, 
+        WS_OVERLAPPEDWINDOW | WS_VISIBLE, //WS_SYSMENU, // | WS_POPUP | WS_CAPTION | WS_BORDER | WS_SYSMENU | WS_VISIBLE | WS_DLGFRAME | DS_CENTER | WS_OVERLAPPEDWINDOW | WS_POPUP, 
         CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
         NULL, 
         NULL, 
@@ -1337,9 +1344,11 @@ JNIEXPORT jstring JNICALL Java_com_synthbot_audioplugin_vst_vst2_JVstHost20_getE
   (JNIEnv *env, jclass jclazz, jlong ae) {
   
   AEffect *effect = (AEffect *)ae;
-  char *name = (char *)malloc(sizeof(char) * kVstMaxEffectNameLen);
-  effect->dispatcher (effect, effGetEffectName, 0, 0, name, 0);
-  jstring jname = env->NewStringUTF(name);
+  char *name = (char *)malloc(sizeof(char) * kVstMaxEffectNameLen * 3);
+  int status = effect->dispatcher (effect, effGetEffectName, 0, 0, name, 0);
+  jstring jname;
+  if(status) jname = env->NewStringUTF(name);
+  else jname = NULL;
   free(name);
   return jname;
 }
@@ -1353,8 +1362,10 @@ JNIEXPORT jstring JNICALL Java_com_synthbot_audioplugin_vst_vst2_JVstHost20_getP
    */
   AEffect *effect = (AEffect *)ae;
   char *name = (char *)malloc(sizeof(char) * 64); // kVstMaxParamStrLen
-  effect->dispatcher (effect, effGetParamName, index, 0, name, 0);
-  jstring jname = env->NewStringUTF(name);
+  int status = effect->dispatcher (effect, effGetParamName, index, 0, name, 0);
+  jstring jname;
+  if(status) jname = env->NewStringUTF(name);
+  else jname = NULL;
   free(name);
   return jname;
 }
@@ -1364,8 +1375,10 @@ JNIEXPORT jstring JNICALL Java_com_synthbot_audioplugin_vst_vst2_JVstHost20_getV
 
   AEffect *effect = (AEffect *)ae;
   char *name = (char *)malloc(sizeof(char) * kVstMaxVendorStrLen);
-  effect->dispatcher (effect, effGetVendorString, 0, 0, name, 0);
-  jstring jname = env->NewStringUTF(name);
+  int status = effect->dispatcher (effect, effGetVendorString, 0, 0, name, 0);
+  jstring jname;
+  if(status) jname = env->NewStringUTF(name);
+  else jname = NULL;
   free(name);
   return jname;
 }
@@ -1375,8 +1388,10 @@ JNIEXPORT jstring JNICALL Java_com_synthbot_audioplugin_vst_vst2_JVstHost20_getP
 
   AEffect *effect = (AEffect *)ae;
   char *name = (char *)malloc(sizeof(char) * kVstMaxProductStrLen);
-  effect->dispatcher (effect, effGetProductString, 0, 0, name, 0);
-  jstring jname = env->NewStringUTF(name);
+  int status = effect->dispatcher (effect, effGetProductString, 0, 0, name, 0);
+  jstring jname;
+  if(status) jname = env->NewStringUTF(name);
+  else jname = NULL;
   free(name);
   return jname;
 }
@@ -1447,8 +1462,10 @@ JNIEXPORT jstring JNICALL Java_com_synthbot_audioplugin_vst_vst2_JVstHost20_getP
 
   AEffect *effect = (AEffect *)ae;
   char *name = (char *)malloc(sizeof(char) * kVstMaxProgNameLen);
-  effect->dispatcher (effect, effGetProgramName, 0, 0, name, 0);
-  jstring jname = env->NewStringUTF(name);
+  int status = effect->dispatcher (effect, effGetProgramName, 0, 0, name, 0);
+  jstring jname;
+  if(status) jname = env->NewStringUTF(name);
+  else jname = NULL;
   free(name);
   return jname;
 }
@@ -1458,8 +1475,10 @@ JNIEXPORT jstring JNICALL Java_com_synthbot_audioplugin_vst_vst2_JVstHost20_getP
 
   AEffect *effect = (AEffect *)ae;
   char *name = (char *)malloc(sizeof(char) * kVstMaxProgNameLen * 3);
-  effect->dispatcher (effect, effGetProgramNameIndexed, (VstInt32) index, 0, name, 0);
-  jstring jname = env->NewStringUTF(name);
+  int status = effect->dispatcher (effect, effGetProgramNameIndexed, (VstInt32) index, 0, name, 0);
+  jstring jname;
+  if(status) jname = env->NewStringUTF(name);
+  else jname = NULL;
   free(name);
   return jname;
 }
@@ -1505,8 +1524,10 @@ JNIEXPORT jstring JNICALL Java_com_synthbot_audioplugin_vst_vst2_JVstHost20_getP
    */
   AEffect *effect = (AEffect *)ae;
   char *name = (char *)malloc(sizeof(char) * 64); // kVstMaxParamStrLen
-  effect->dispatcher (effect, effGetParamDisplay, index, 0, name, 0);
-  jstring jname = env->NewStringUTF(name);
+  int status = effect->dispatcher (effect, effGetParamDisplay, index, 0, name, 0);
+  jstring jname;
+  if(status) jname = env->NewStringUTF(name);
+  else jname = NULL;
   free(name);
   return jname;
 }
@@ -1521,8 +1542,10 @@ JNIEXPORT jstring JNICALL Java_com_synthbot_audioplugin_vst_vst2_JVstHost20_getP
    */
   AEffect *effect = (AEffect *)ae;
   char *name = (char *)malloc(sizeof(char) * 64); // kVstMaxParamStrLen
-  effect->dispatcher (effect, effGetParamLabel, index, 0, name, 0);
-  jstring jname = env->NewStringUTF(name);
+  int status = effect->dispatcher (effect, effGetParamLabel, index, 0, name, 0);
+  jstring jname;
+  if(status) jname = env->NewStringUTF(name);
+  else jname = NULL;
   free(name);
   return jname;
 }

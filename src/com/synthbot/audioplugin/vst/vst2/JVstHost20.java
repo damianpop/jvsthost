@@ -650,6 +650,16 @@ public class JVstHost20 extends JVstHost2 {
       listener.onAudioMasterEndEdit(this, index);
     }
   }
+
+  protected synchronized double getCurrentSample() {
+    if(hostListeners.size() > 0) return hostListeners.get(0).getCurrentSample();
+    return 0;
+  }
+
+  protected synchronized double getCurrentPpqPos() {
+    if(hostListeners.size() > 0) return hostListeners.get(0).getCurrentPpqPos();
+    return 0;
+  }
   
   /*
    * Listener manager methods.

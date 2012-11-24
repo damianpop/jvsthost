@@ -69,4 +69,8 @@ public interface JVstHostListener {
    */
   public void onAudioMasterEndEdit(JVstHost2 vst, int index);
 
+  public double getCurrentSample();
+
+  public double getCurrentPpqPos();
+
 }

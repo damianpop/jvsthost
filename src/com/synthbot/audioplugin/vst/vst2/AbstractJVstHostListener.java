@@ -45,4 +45,12 @@ public abstract class AbstractJVstHostListener implements JVstHostListener {
     // do nothing
   }
 
+  public double getCurrentSample(){
+      return 0;
+  }
+
+  public double getCurrentPpqPos(){
+      return 0;
+  }
+
 }

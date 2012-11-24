@@ -173,7 +173,7 @@ public abstract class JVstHost2 {
    * @throws JVstLoadException  Thrown if there is a problem loading or instantiating the native object.
    */
   protected static native long loadPlugin(String pluginFile) throws JVstLoadException;
-  
+
   /**
    * Stop and unload the native component of the plugin. Any further use of this object will cause an <code>IllegalStateException</code>
    * to be thrown. This method is publicly exposed in order to allow the potentially heavy native component to be
@@ -196,7 +196,7 @@ public abstract class JVstHost2 {
    */
   public abstract VstVersion getVstVersion();
   protected static native int getVstVersion(long pluginPtr);
-  
+
   /**
    * Returns the version of the plugin.
    * @return  The plugin version (example 1100 for version 1.1.0.0)
@@ -537,6 +537,10 @@ public abstract class JVstHost2 {
   protected abstract void audioMasterBeginEdit(int index);
   
   protected abstract void audioMasterEndEdit(int index);
+
+  protected abstract double getCurrentSample();
+
+  protected abstract double getCurrentPpqPos();
   
   /*
    * Listener manager methods.

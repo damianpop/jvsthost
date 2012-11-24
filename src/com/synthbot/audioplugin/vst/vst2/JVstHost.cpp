@@ -38,9 +38,10 @@
 #define JNI_VERSION JNI_VERSION_1_4
 
 #define PPQ 96.0
-#define WINDOWS_EDITOR_CLASSNAME "JVstHost Native Editor"
+#define WINDOWS_EDITOR_CLASSNAME "JVstHostNativeEditor"
+#define WINDOWS_EDITOR_CHILD_CLASSNAME "JVstHostNativeEditorCHILD"
 
-#define DEBUG_ENABLED 1
+#define DEBUG_ENABLED 0
 
 // GLOBAL VARIABLES
 JavaVM *jvm;
@@ -51,6 +52,8 @@ jmethodID vpwAudioMasterIoChanged;
 jmethodID vpwAudioMasterAutomate;
 jmethodID vpwAudioMasterBeginEdit;
 jmethodID vpwAudioMasterEndEdit;
+jmethodID vpwGetCurrentSample;
+jmethodID vpwGetCurrentPpqPos;
 jmethodID mmGetMessage;
 
 /**
@@ -64,10 +67,11 @@ typedef struct hostLocalVars {
   double **dOutputs;
   VstTimeInfo *vti;
   void *libPtr;
-  double sampleRate; // cache the current sampleRate and blockSize, so that the java object doesn't have to be asked for it every time an audioMaster callback is made (such as for VstTimeInfo pointers).
+  double sampleRate; // cache the current sampleRate and blockSize, so that the java object doesn't have to be asked for it every time an audioMaster callback is made (such as for VstTimeInfo pointers).  
   int blockSize;
   double tempo;
   void *nativeEditorWindow;
+  void *nativeEditorWindowChild;
   int timeSigNumerator;
   int timeSigDenominator;
 };
@@ -127,20 +131,28 @@ jobject getCachedCallingObject(AEffect *effect) {
  * @param width  Width in pixels of the content of the window (total frame size calculated automatically)
  * @param height  Height in pixels of the content of the window
  */
-void setEditorWindowSizeAndPosition(HWND hwnd, int width, int height) {
+void setEditorWindowSizeAndPosition(AEffect* effect, int width, int height) {
+  hostLocalVars* localvars = (hostLocalVars *) effect->resvd1;
+  HWND hwnd = (HWND) localvars->nativeEditorWindow;
+  HWND hwndchild = (HWND) localvars->nativeEditorWindowChild;
+
+  int topMargin = 30;
+
   RECT wRect;
-  SetRect (&wRect, 0, 0, width, height);
+  SetRect (&wRect, 0, 0, width, height+topMargin);
   AdjustWindowRectEx(&wRect, GetWindowLong(hwnd, GWL_STYLE), FALSE, GetWindowLong(hwnd, GWL_EXSTYLE));
-  width = wRect.right - wRect.left;
-  height = wRect.bottom - wRect.top;
-  SetWindowPos(hwnd, HWND_TOP, 0, 0, width, height, SWP_NOMOVE);
+  SetWindowPos(hwnd, HWND_TOP, 0, 0, wRect.right - wRect.left, wRect.bottom - wRect.top, SWP_NOMOVE);
+
+  SetRect (&wRect, 0, topMargin, width, height);
+  AdjustWindowRectEx(&wRect, GetWindowLong(hwndchild, GWL_STYLE), FALSE, GetWindowLong(hwndchild, GWL_EXSTYLE));
+  SetWindowPos(hwndchild, HWND_TOP, 0, topMargin, width, height, 0);
 }
 
 /*
  * Returns true if the ERect info has been successfully retrieved and set. False otherwise.
  * The window is set to a default size of 100 x 100 pixels in case of failure.
  */
-bool setERectInfo(AEffect *effect, HWND hwnd) {
+bool setERectInfo(AEffect *effect) {  
   ERect* eRect = NULL;
   effect->dispatcher (effect, effEditGetRect, 0, 0, &eRect, 0);
   if (eRect != NULL) {
@@ -156,7 +168,7 @@ bool setERectInfo(AEffect *effect, HWND hwnd) {
       result = false;
     }
 
-    setEditorWindowSizeAndPosition(hwnd, width, height);
+    setEditorWindowSizeAndPosition(effect, width, height);
     return result;
   } else {
     return false;
@@ -168,25 +180,41 @@ INT_PTR CALLBACK EditorProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     case WM_CREATE: {
       AEffect *effect = (AEffect *) (((CREATESTRUCT *) lParam)->lpCreateParams);
       if (effect != NULL) {
-        SetTimer(hwnd, 1, 40, NULL); // 40ms == 25 frames per second
-      
-        JNIEnv *env;
-        jvm->GetEnv((void **)&env, JNI_VERSION);
-        env->MonitorEnter(getCachedCallingObject(effect));
+		HWND childhwnd = CreateWindowEx(
+		0,
+        WINDOWS_EDITOR_CHILD_CLASSNAME, 
+        "", 
+        WS_CHILD|WS_VISIBLE,
+		CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
+        hwnd, 
+        NULL, 
+        GetModuleHandle(NULL), 
+        (LPVOID) effect);
+				
+		((hostLocalVars *) effect->resvd1)->nativeEditorWindow = hwnd;
+		((hostLocalVars *) effect->resvd1)->nativeEditorWindowChild = childhwnd;
 
-        // apparently some plugins require effEditGetRect to be called before effEditOpen
-        bool isERectInfoSet = setERectInfo(effect, hwnd);
-        effect->dispatcher (effect, effEditOpen, 0, 0, hwnd, 0);
-        if (!isERectInfoSet) {
-          setERectInfo(effect, hwnd);
-        }
-        
-        env->MonitorExit(getCachedCallingObject(effect));
-
-        ShowWindow(hwnd, SW_SHOW);
+		//JNIEnv *env;
+        //jvm->GetEnv((void **)&env, JNI_VERSION);
+        //env->MonitorEnter(getCachedCallingObject(effect));
+		
+		ShowWindow(hwnd, SW_SHOW);
         UpdateWindow(hwnd);
 
-        return TRUE; // the message was processed
+		SetTimer(hwnd, 1, 40, NULL); // 40ms == 25 frames per second
+        
+        ShowWindow(childhwnd, SW_SHOW);
+        UpdateWindow(childhwnd);
+
+        bool isERectInfoSet = setERectInfo(effect);
+        effect->dispatcher (effect, effEditOpen, 0, 0, childhwnd, 0);
+        if (!isERectInfoSet) {
+          setERectInfo(effect);
+        }
+
+		//env->MonitorExit(getCachedCallingObject(effect));
+        
+		return TRUE; // the message was processed
       } else {
         return FALSE;
       }
@@ -195,13 +223,13 @@ INT_PTR CALLBACK EditorProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     case WM_TIMER: {
       AEffect *effect = (AEffect *) GetWindowLongPtr(hwnd, 0);
       if (effect != NULL) {
-        //JNIEnv *env;
-        //jvm->GetEnv((void **)&env, JNI_VERSION);
-        //env->MonitorEnter(getCachedCallingObject(effect));
-		effect->dispatcher (effect, effIdle, 0, 0, 0, 0);
+        JNIEnv *env;
+        jvm->GetEnv((void **)&env, JNI_VERSION);
+        env->MonitorEnter(getCachedCallingObject(effect));
+		//effect->dispatcher (effect, effIdle, 0, 0, 0, 0);
         effect->dispatcher (effect, effEditIdle, 0, 0, 0, 0);
 
-        //env->MonitorExit(getCachedCallingObject(effect));
+        env->MonitorExit(getCachedCallingObject(effect));
         return TRUE;
       } else {
         return FALSE;
@@ -216,12 +244,23 @@ INT_PTR CALLBACK EditorProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         env->MonitorEnter(getCachedCallingObject(effect));
         effect->dispatcher(effect, effEditClose, 0, 0, 0, 0);
         ((hostLocalVars *) effect->resvd1)->nativeEditorWindow = NULL;
+		((hostLocalVars *) effect->resvd1)->nativeEditorWindowChild = NULL;
         env->MonitorExit(getCachedCallingObject(effect));
       }
       KillTimer(hwnd, 1);
       PostQuitMessage(0);
       return TRUE;
     }
+    
+    default: {
+      return DefWindowProc(hwnd, msg, wParam, lParam);
+    }
+  }
+}
+
+// the Proc for the child window (the one passed to the effect for drawing)
+INT_PTR CALLBACK EditorProcChild(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+  switch(msg) {
     
     default: {
       return DefWindowProc(hwnd, msg, wParam, lParam);
@@ -280,9 +319,12 @@ JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *ur_jvm, void *reserved) {
   vpwAudioMasterAutomate = env->GetMethodID(vpwClass, "audioMasterAutomate", "(IF)V");
   vpwAudioMasterBeginEdit = env->GetMethodID(vpwClass, "audioMasterBeginEdit", "(I)V");
   vpwAudioMasterEndEdit = env->GetMethodID(vpwClass, "audioMasterEndEdit", "(I)V");
+  vpwGetCurrentSample = env->GetMethodID(vpwClass, "getCurrentSample", "()D");
+  vpwGetCurrentPpqPos = env->GetMethodID(vpwClass, "getCurrentPpqPos", "()D");
   mmGetMessage = env->GetMethodID(midiMessageClass, "getMessage", "()[B");
   
   #if _WIN32
+  {
     WNDCLASS wndclass;
     wndclass.style = CS_HREDRAW | CS_VREDRAW;
     wndclass.lpfnWndProc = (WNDPROC) EditorProc;
@@ -296,6 +338,23 @@ JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *ur_jvm, void *reserved) {
     wndclass.lpszClassName = WINDOWS_EDITOR_CLASSNAME;
     
     RegisterClass(&wndclass);
+  }
+
+  {
+	WNDCLASS wndclass;
+    wndclass.style = CS_HREDRAW | CS_VREDRAW;
+    wndclass.lpfnWndProc = (WNDPROC) EditorProcChild;
+    wndclass.cbClsExtra = 0;
+    wndclass.cbWndExtra = sizeof(LONG_PTR); // a pointer to the associated effect is stored with the window in order to allow for callbacks in the window messaging loop
+    wndclass.hInstance = GetModuleHandle(NULL);
+    wndclass.hIcon = LoadIcon(NULL, IDI_APPLICATION);
+    wndclass.hCursor = LoadCursor(NULL, IDC_ARROW);
+    wndclass.hbrBackground = 0;
+    wndclass.lpszMenuName = NULL;
+    wndclass.lpszClassName = WINDOWS_EDITOR_CHILD_CLASSNAME;
+    
+    RegisterClass(&wndclass);
+  }
   #endif
   
   return JNI_VERSION;
@@ -416,45 +475,64 @@ VstIntPtr VSTCALLBACK HostCallback (AEffect *effect, VstInt32 opcode, VstInt32 i
       if (isHostLocalVarsValid(effect)) {
         hostLocalVars *hostVars = ((hostLocalVars *) effect->resvd1);
         VstTimeInfo *vti = hostVars->vti;
-        vti->samplePos = 0.0;
+
+		jobject jobj = getCachedCallingObject(effect);
+        if (jobj == NULL) {
+		  vti->samplePos = 0;
+		} else {
+		  vti->samplePos = env->CallDoubleMethod(jobj, vpwGetCurrentSample);
+		}
+		        
         vti->sampleRate = hostVars->sampleRate;
         vti->flags = 0;
 		
         if ((value & kVstNanosValid) != 0) { // bit 8
+	      DEBUG("audioMasterGetTime kVstNanosValid");
           // Live returns this...
           vti->nanoSeconds = 0.0;
           vti->flags |= kVstNanosValid;
         }
         if ((value & kVstPpqPosValid) != 0) { // bit 9
-          //vti->ppqPos = (vti->samplePos/vti->sampleRate) * (TEMPO_BPM/60.0);
-          vti->ppqPos = 0.0;
+		  DEBUG("audioMasterGetTime kVstPpqPosValid");
+          jobject jobj = getCachedCallingObject(effect);
+          if (jobj == NULL) {
+		    vti->ppqPos = 0;
+		  } else {
+		    vti->ppqPos = env->CallDoubleMethod(jobj, vpwGetCurrentPpqPos);
+		  }
           vti->flags |= kVstPpqPosValid;
         }
         if ((value & kVstTempoValid) != 0) { // bit 10
+		  DEBUG("audioMasterGetTime kVstTempoValid");
           vti->tempo = hostVars->tempo;
           vti->flags |= kVstTempoValid;
         }
         if ((value & kVstBarsValid) != 0) { // bit 11
+		  DEBUG("audioMasterGetTime kVstBarsValid");
           // Live returns this...
           vti->barStartPos = 0.0;
           vti->flags |= kVstBarsValid;
         }
         if ((value & kVstCyclePosValid) != 0) { // bit 12
+		  DEBUG("audioMasterGetTime kVstCyclePosValid");
           // Live returns this...
           vti->cycleStartPos = 0.0;
           vti->cycleEndPos = 0.0;
           vti->flags |= kVstCyclePosValid;
         }
         if ((value & kVstTimeSigValid) != 0) { // bit 13
+		  DEBUG("audioMasterGetTime kVstTimeSigValid");
           vti->timeSigNumerator = hostVars->timeSigNumerator;
           vti->timeSigDenominator = hostVars->timeSigDenominator;
           vti->flags |= kVstTimeSigValid;
         }
         if ((value & kVstSmpteValid) != 0) { // bit 14
+		  DEBUG("audioMasterGetTime kVstSmpteValid");
           //vti->smpteFrameRate = kVstSmpte24fps; // return something!???
           //vti->flags |= kVstSmpteValid;
         }
         if ((value & kVstClockValid) != 0) { // bit 15
+		  DEBUG("audioMasterGetTime kVstClockValid");
           // Live returns this...
           vti->samplesToNextClock = 0;
           vti->flags |= kVstClockValid;
@@ -538,11 +616,8 @@ VstIntPtr VSTCALLBACK HostCallback (AEffect *effect, VstInt32 opcode, VstInt32 i
 	  DEBUG("audioMasterSizeWindow");
       #if _WIN32
         if (isHostLocalVarsValid(effect)) {
-          HWND hwnd = (HWND) ((hostLocalVars *) effect->resvd1)->nativeEditorWindow;
-          if (hwnd != NULL) {
-            setEditorWindowSizeAndPosition(hwnd, (int) index, (int) value);
-            return 1;
-          }
+          setEditorWindowSizeAndPosition(effect, (int) index, (int) value);
+          return 1;          
         }
       #endif
       return 0; // not supported
@@ -881,6 +956,7 @@ JNIEXPORT jlong JNICALL Java_com_synthbot_audioplugin_vst_vst2_JVstHost2_loadPlu
   ((hostLocalVars *) ae->resvd1)->blockSize = 0;
   ((hostLocalVars *) ae->resvd1)->tempo = 120.0; // 120 BPM
   ((hostLocalVars *) ae->resvd1)->nativeEditorWindow = NULL;
+  ((hostLocalVars *) ae->resvd1)->nativeEditorWindowChild = NULL;
   ((hostLocalVars *) ae->resvd1)->timeSigNumerator = 4;
   ((hostLocalVars *) ae->resvd1)->timeSigDenominator = 4;
 
@@ -940,11 +1016,12 @@ JNIEXPORT void JNICALL Java_com_synthbot_audioplugin_vst_vst2_JVstHost20_openEdi
 
   #if _WIN32
     const char *frameTitle = (char *) env->GetStringUTFChars(jFrameTitle, NULL);
-    
-    HWND hwnd = CreateWindow(
+
+    HWND hwnd = CreateWindowEx(
+		WS_EX_WINDOWEDGE, // | WS_EX_LAYERED,
         WINDOWS_EDITOR_CLASSNAME, 
         frameTitle, 
-        WS_OVERLAPPEDWINDOW | WS_VISIBLE, //WS_SYSMENU, // | WS_POPUP | WS_CAPTION | WS_BORDER | WS_SYSMENU | WS_VISIBLE | WS_DLGFRAME | DS_CENTER | WS_OVERLAPPEDWINDOW | WS_POPUP, 
+        WS_SYSMENU|WS_DLGFRAME|WS_BORDER|WS_CLIPSIBLINGS|WS_VISIBLE|WS_POPUP, //WS_SYSMENU, // | WS_POPUP | WS_CAPTION | WS_BORDER | WS_SYSMENU | WS_VISIBLE | WS_DLGFRAME | DS_CENTER | WS_OVERLAPPEDWINDOW | WS_POPUP, 
         CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
         NULL, 
         NULL, 
